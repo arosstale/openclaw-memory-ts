@@ -1,0 +1,18 @@
+[
+  {
+    "strategy_id": "v7_trading",
+    "weights": {
+      "TrendCapturePro": 0.25,
+      "VolatilityBreakoutSystem": 0.25,
+      "SupertrendNovaCloud": 0.25,
+      "DivergenceVolatilityEnhanced": 0.25
+    },
+    "timestamp": "2026-02-11T04:28:16.173179",
+    "score": 0.25,
+    "metadata": {
+      "method": "roll",
+      "iterations": 2,
+      "learning_rate": 0.01
+    }
+  }
+]

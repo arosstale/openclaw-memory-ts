@@ -1,0 +1,9 @@
+{
+  "version": "2.3",
+  "proof": { "pi_a": ["2"], "pi_b": [["2"]], "pi_c": ["2"] },
+  "publicSignals": ["hash2"],
+  "proofHash": "d80f6ce18aed237ff611f719bf0aa664b146eaa9c6ece6cffb7d7b23864485c7",
+  "taskId": "batch-task-002",
+  "agentIdHash": "agent-hash-001",
+  "timestamp": 1770638853000
+}

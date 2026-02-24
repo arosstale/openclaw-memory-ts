@@ -1,0 +1,28 @@
+# OpenClaw Memory Template - Core Dependencies (Exact Version Pins)
+
+# Configuration Management
+pyyaml==6.0.1
+
+# Security & Secrets Management
+cryptography==41.0.7
+
+# MSAM Integration (Cognitive Memory)
+# Note: MSAM is not on PyPI - install from source
+# cd ~/msam && pip install -e .
+
+# Research Engine (arXiv Paper Discovery)
+arxiv==2.1.0
+python-dateutil==2.8.2
+
+# Observational Memory (Three-Agent System)
+tiktoken==0.7.0
+openai==1.0.0
+sqlalchemy==2.0.0
+
+# Optional: PAOM Integration
+# paom-sdk==1.0.0
+
+# Note: MSAM must be installed from source:
+# git clone https://github.com/jadenschwab/msam.git
+# cd msam
+# pip install -e .

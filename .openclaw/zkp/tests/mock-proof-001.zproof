@@ -1,0 +1,13 @@
+{
+  "version": "2.3",
+  "proof": {
+    "pi_a": ["1", "2", "3"],
+    "pi_b": [["1", "2"], ["3", "4"]],
+    "pi_c": ["1", "2", "3"]
+  },
+  "publicSignals": ["hash1", "hash2", "hash3"],
+  "proofHash": "25f4d55c6f6703088b3eee83218e8dfebdd1b2a47c88ac55e59cee649adf847c",
+  "taskId": "test-task-001",
+  "agentIdHash": "agent-hash-001",
+  "timestamp": 1770638853000
+}
