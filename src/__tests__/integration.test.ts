@@ -1,99 +1,181 @@
 /**
- * Integration test - Full Retain/Recall/Reflect loop
+ * Integration Test: Full Retain → Recall → Reflect Loop
+ * 
+ * Run with: npm test (requires SQLite compilation)
+ * Expected: All operations complete without crashes
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { ALMAAgent } from '../alma/ALMAAgent';
 import { ObserverAgent } from '../observational-memory/ObserverAgent';
 import { MemoryIndexer } from '../knowledge/MemoryIndexer';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { mkdirSync, existsSync } from 'fs';
 
-describe('Hindsight Memory System', () => {
-  it('should extract observations from a conversation', async () => {
-    // TODO: Test that ObserverAgent can:
-    // 1. Read a daily log
-    // 2. Extract structured observations (type, entities, time, priority, confidence)
-    // 3. Store as bank/entities/*.md and bank/opinions.md
-    // 4. Return citations (file + line number)
+const testDir = join(tmpdir(), 'openclaw-memory-test');
 
-    const observer = new ObserverAgent({
-      workspace: '/tmp/test-workspace',
-      memoryDir: '/tmp/test-workspace/memory',
-      llmProvider: 'openai',
-      llmModel: 'gpt-4',
-      apiKey: 'test-key',
+describe('Memory System Integration', () => {
+  let alma: ALMAAgent;
+  let observer: ObserverAgent;
+  let indexer: MemoryIndexer;
+
+  beforeAll(() => {
+    // Setup test directories
+    if (!existsSync(testDir)) mkdirSync(testDir, { recursive: true });
+
+    // Initialize components
+    alma = new ALMAAgent({
+      dbPath: join(testDir, 'alma.db'),
     });
 
-    const messages = [
-      {
-        role: 'user',
-        content: 'Alice prefers short responses on WhatsApp.',
-        timestamp: new Date(),
-      },
-      {
-        role: 'assistant',
-        content: 'Noted. I will remember that.',
-        timestamp: new Date(),
-      },
-    ];
-
-    // const observations = await observer.extractObservations(messages);
-    // expect(observations).toHaveLength(1);
-    // expect(observations[0].entities).toContain('Alice');
-    // expect(observations[0].kind).toBe('opinion');
-  });
-
-  it('should index and search memories', async () => {
-    // TODO: Test that MemoryIndexer can:
-    // 1. Read Markdown files from workspace
-    // 2. Split into chunks with overlap
-    // 3. Build FTS5 index + optional embeddings
-    // 4. Return semantic + lexical search results
-
-    const indexer = new MemoryIndexer({
-      workspace: '/tmp/test-workspace',
-      dbPath: '/tmp/test-workspace/.memory/index.sqlite',
-      chunkSize: 400,
-      chunkOverlap: 80,
+    observer = new ObserverAgent({
+      llmProvider: 'anthropic',
+      llmModel: 'claude-opus-4-6',
+      apiKey: process.env.ANTHROPIC_API_KEY || 'test-key',
     });
 
-    // const results = await indexer.search("What does Alice prefer?", 5, 'hybrid');
-    // expect(results).toHaveLength(1);
-    // expect(results[0].text).toContain('Alice');
-    // expect(results[0].file).toBe('bank/entities/Alice.md');
+    indexer = new MemoryIndexer({
+      workspace: testDir,
+      dbPath: join(testDir, 'index.db'),
+    });
   });
 
-  it('should evolve memory design with ALMA', async () => {
-    // TODO: Test that ALMAAgent can:
-    // 1. Propose memory design mutations
-    // 2. Evaluate designs against metrics
-    // 3. Track best design
-    // 4. Suggest improvements
+  afterAll(() => {
+    // Cleanup (optional: keep for inspection)
+  });
 
-    const alma = new ALMAAgent({
-      dbPath: '/tmp/test-workspace/.memory/alma.sqlite',
-      populationSize: 20,
-      mutationRate: 0.3,
+  describe('ALMA Agent', () => {
+    it('should propose memory designs', () => {
+      const design = alma.proposeDesign();
+
+      expect(design).toBeDefined();
+      expect(design.designId).toBeTruthy();
+      expect(design.parameters).toBeDefined();
+      expect(design.performanceScore).toBe(0);
     });
 
-    // const design1 = alma.proposeDesign();
-    // const design2 = alma.proposeDesign(design1.designId);
+    it('should evaluate designs and track performance', () => {
+      const design = alma.proposeDesign();
+      const eval1 = alma.evaluateDesign(design.designId, {
+        recall: 0.85,
+        efficiency: 0.78,
+        compression: 0.72,
+      });
 
-    // const eval1 = alma.evaluateDesign(design1.designId, {
-    //   accuracy: 0.92,
-    //   efficiency: 0.85,
-    //   compression: 0.78,
-    // });
+      expect(eval1).toBeDefined();
+      expect(eval1.score).toBeGreaterThan(0);
 
-    // const best = alma.getBestDesign();
-    // expect(best).toBeTruthy();
+      // Second evaluation should increase scores
+      const eval2 = alma.evaluateDesign(design.designId, {
+        recall: 0.87,
+        efficiency: 0.80,
+        compression: 0.74,
+      });
+
+      expect(eval2.score).toBeGreaterThanOrEqual(eval1.score);
+    });
+
+    it('should identify best design', () => {
+      const d1 = alma.proposeDesign();
+      const d2 = alma.proposeDesign();
+
+      alma.evaluateDesign(d1.designId, { recall: 0.75, efficiency: 0.75, compression: 0.75 });
+      alma.evaluateDesign(d2.designId, { recall: 0.90, efficiency: 0.85, compression: 0.80 });
+
+      const best = alma.getBestDesign();
+      expect(best).toBeDefined();
+      expect(best!.designId).toBe(d2.designId);
+    });
+
+    it('should return top K designs', () => {
+      for (let i = 0; i < 5; i++) {
+        const design = alma.proposeDesign();
+        alma.evaluateDesign(design.designId, {
+          recall: 0.5 + Math.random() * 0.5,
+          efficiency: 0.5 + Math.random() * 0.5,
+          compression: 0.5 + Math.random() * 0.5,
+        });
+      }
+
+      const topDesigns = alma.getTopDesigns(3);
+      expect(topDesigns).toHaveLength(3);
+      expect(topDesigns[0].performanceScore).toBeGreaterThanOrEqual(
+        topDesigns[1].performanceScore
+      );
+    });
   });
 
-  it('should complete full retain/recall/reflect cycle', async () => {
-    // TODO: Integration test:
-    // 1. [Retain] ObserverAgent extracts facts from daily log
-    // 2. [Index] MemoryIndexer builds search index
-    // 3. [Recall] MemoryIndexer.search returns results with citations
-    // 4. [Reflect] ALMAAgent proposes better memory design
-    // 5. [Store] Save to bank/entities, bank/opinions, MEMORY.md
+  describe('Observer Agent', () => {
+    it('should handle missing LLM provider gracefully', async () => {
+      // Observer should not crash even if LLM is unavailable
+      const messages = [
+        {
+          role: 'user' as const,
+          content: 'I live in NYC and prefer async communication',
+          timestamp: new Date(),
+        },
+      ];
+
+      // This should return empty array, not throw
+      const result = await observer.extractObservations(messages);
+      expect(Array.isArray(result)).toBe(true);
+      // Result may be empty if LLM call failed, but no crash
+    });
+  });
+
+  describe('Memory Indexer', () => {
+    it('should initialize schema without crashing', () => {
+      // Just verify it doesn't crash
+      expect(indexer).toBeDefined();
+    });
+
+    it('should handle missing workspace gracefully', async () => {
+      const missingIndexer = new MemoryIndexer({
+        workspace: join(testDir, 'nonexistent'),
+        dbPath: join(testDir, 'missing.db'),
+      });
+
+      // Should not crash even if workspace doesn't exist
+      const result = await missingIndexer.indexWorkspace();
+      expect(typeof result).toBe('number');
+      expect(result).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe('Full Loop', () => {
+    it('should complete Retain → Search → Reflect without crashing', async () => {
+      // This is the full happy path test
+
+      // 1. ALMA proposes design
+      const design = alma.proposeDesign();
+      expect(design).toBeDefined();
+
+      // 2. Observer extracts observations (gracefully degraded if no LLM)
+      const messages = [
+        {
+          role: 'user' as const,
+          content: 'I prefer building in TypeScript',
+          timestamp: new Date(),
+        },
+      ];
+      const observations = await observer.extractObservations(messages);
+      expect(Array.isArray(observations)).toBe(true);
+
+      // 3. Indexer indexes workspace
+      const indexed = await indexer.indexWorkspace();
+      expect(indexed).toBeGreaterThanOrEqual(0);
+
+      // 4. ALMA evaluates design
+      const evaluation = alma.evaluateDesign(design.designId, {
+        recall: 0.80,
+        efficiency: 0.75,
+        compression: 0.70,
+      });
+      expect(evaluation).toBeDefined();
+
+      // Full loop completed successfully
+      expect(true).toBe(true);
+    });
   });
 });
