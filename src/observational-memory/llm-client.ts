@@ -2,9 +2,11 @@
  * LLM Client - Unified interface for extracting observations
  *
  * Supports: OpenAI, Anthropic, Gemini
+ * Includes: Retry logic, rate limit handling, graceful degradation
  */
 
 import { Observation, ObservationConfig, ObservationKind, PriorityLevel } from './types';
+import { LLMError, GracefulDegradation } from '../errors';
 
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
@@ -20,6 +22,7 @@ export class LLMClient {
 
   /**
    * Call LLM to extract observations from messages
+   * Includes retry logic and graceful degradation
    */
   async extractObservations(
     messages: Array<{ role: string; content: string; timestamp: Date }>,
@@ -33,24 +36,40 @@ export class LLMClient {
       { role: 'user', content: userPrompt },
     ];
 
-    let response: string;
+    let response: string | null = null;
 
-    switch (this.config.llmProvider) {
-      case 'openai':
-        response = await this.callOpenAI(llmMessages);
-        break;
-      case 'anthropic':
-        response = await this.callAnthropic(llmMessages);
-        break;
-      case 'gemini':
-        response = await this.callGemini(llmMessages);
-        break;
-      default:
-        throw new Error(`Unknown LLM provider: ${this.config.llmProvider}`);
+    // Try with retry logic
+    response = await GracefulDegradation.retry(
+      `LLM extraction (${this.config.llmProvider})`,
+      async () => {
+        switch (this.config.llmProvider) {
+          case 'openai':
+            return await this.callOpenAI(llmMessages);
+          case 'anthropic':
+            return await this.callAnthropic(llmMessages);
+          case 'gemini':
+            return await this.callGemini(llmMessages);
+          default:
+            throw new Error(`Unknown LLM provider: ${this.config.llmProvider}`);
+        }
+      },
+      3,
+      200
+    );
+
+    // If all retries failed, return empty observations
+    if (!response) {
+      console.warn(`[Memory] LLM extraction failed completely. Observations will be empty.`);
+      return [];
     }
 
-    // Parse response into observations
-    return this.parseObservations(response, sourceFile);
+    // Parse response into observations (with error handling)
+    try {
+      return this.parseObservations(response, sourceFile);
+    } catch (e) {
+      console.warn(`[Memory] Failed to parse LLM response:`, e instanceof Error ? e.message : e);
+      return [];
+    }
   }
 
   /**
@@ -166,7 +185,7 @@ export class LLMClient {
   }
 
   /**
-   * Call OpenAI API
+   * Call OpenAI API with error handling
    */
   private async callOpenAI(messages: LLMMessage[]): Promise<string> {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -183,16 +202,25 @@ export class LLMClient {
       }),
     });
 
+    if (response.status === 429) {
+      throw new Error('Rate limited by OpenAI API');
+    }
+
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.statusText}`);
+      const errorBody = await response.text();
+      throw new LLMError(`OpenAI API error: ${response.statusText} - ${errorBody}`, 'openai');
     }
 
     const data = (await response.json()) as any;
+    if (!data.choices?.[0]?.message?.content) {
+      throw new LLMError('Invalid response format from OpenAI', 'openai');
+    }
+
     return data.choices[0].message.content;
   }
 
   /**
-   * Call Anthropic API
+   * Call Anthropic API with error handling
    */
   private async callAnthropic(messages: LLMMessage[]): Promise<string> {
     // Convert system message
@@ -214,16 +242,25 @@ export class LLMClient {
       }),
     });
 
+    if (response.status === 429) {
+      throw new Error('Rate limited by Anthropic API');
+    }
+
     if (!response.ok) {
-      throw new Error(`Anthropic API error: ${response.statusText}`);
+      const errorBody = await response.text();
+      throw new LLMError(`Anthropic API error: ${response.statusText} - ${errorBody}`, 'anthropic');
     }
 
     const data = (await response.json()) as any;
+    if (!data.content?.[0]?.text) {
+      throw new LLMError('Invalid response format from Anthropic', 'anthropic');
+    }
+
     return data.content[0].text;
   }
 
   /**
-   * Call Gemini API
+   * Call Gemini API with error handling
    */
   private async callGemini(messages: LLMMessage[]): Promise<string> {
     const userContent = messages.find((m) => m.role === 'user')?.content || '';
@@ -245,11 +282,20 @@ export class LLMClient {
       }
     );
 
+    if (response.status === 429) {
+      throw new Error('Rate limited by Gemini API');
+    }
+
     if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.statusText}`);
+      const errorBody = await response.text();
+      throw new LLMError(`Gemini API error: ${response.statusText} - ${errorBody}`, 'gemini');
     }
 
     const data = (await response.json()) as any;
+    if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+      throw new LLMError('Invalid response format from Gemini', 'gemini');
+    }
+
     return data.candidates[0].content.parts[0].text;
   }
 
