@@ -1,5 +1,5 @@
 {
-  "name": "@openclaw/memory",
+  "name": "@arosstale/openclaw-memory",
   "version": "1.0.0",
   "description": "Hindsight Memory System for OpenClaw - Retain/Recall/Reflect architecture",
   "main": "dist/index.js",
@@ -48,6 +48,18 @@
   ],
   "author": "Artale <arosstale1@gmail.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arosstale/openclaw-memory.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "SKILL.md"
+  ],
   "dependencies": {
     "better-sqlite3": "^9.0.0",
     "cors": "^2.8.0",
